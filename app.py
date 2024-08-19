@@ -1,12 +1,12 @@
 from flask import Flask
+from google.cloud import firestore
 
 app = Flask(__name__)
 
+# Initialize Firestore DB
+db = firestore.Client()
 
-@app.route('/')
-def hello_world():  # put application's code here
-    return 'Hello World!'
-
+from routes import *
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
