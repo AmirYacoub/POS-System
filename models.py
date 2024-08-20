@@ -1,8 +1,62 @@
+from datetime import datetime
+
 from google.cloud import firestore
 import random
 import string
 
 db = firestore.Client()
+
+
+def update_inventory_item_quantity(item_id, quantity_sold):
+    """Update the quantity of an inventory item after a sale."""
+    doc_ref = db.collection('inventory').document(item_id)
+    item = doc_ref.get()
+    if item.exists:
+        new_quantity = item.to_dict().get('quantity', 0) - quantity_sold
+        if new_quantity < 0:
+            raise ValueError("Not enough stock available")
+        doc_ref.update({'quantity': new_quantity})
+    else:
+        raise ValueError(f"Item with ID {item_id} does not exist")
+
+
+def add_sale(items):
+    """Add a new sale record to Firestore and update inventory quantities."""
+    total_price = 0
+    sale_items = []
+
+    for item in items:
+        item_id = item['item_id']
+        quantity_sold = item['quantity']
+
+        # Get the item details from inventory
+        item_ref = db.collection('inventory').document(item_id)
+        item_data = item_ref.get().to_dict()
+
+        if not item_data or item_data['quantity'] < quantity_sold:
+            raise ValueError(f"Insufficient stock for item ID {item_id}")
+
+        # Update inventory quantity
+        update_inventory_item_quantity(item_id, quantity_sold)
+
+        # Calculate total price and prepare sale item data
+        sale_items.append({
+            'item_id': item_id,
+            'quantity': quantity_sold,
+            'price_at_sale': item_data['price']
+        })
+        total_price += item_data['price'] * quantity_sold
+
+    # Add sale record to Firestore
+    sale_data = {
+        'items': sale_items,
+        'total_price': total_price,
+        'sale_date': datetime.now()
+    }
+    sale_ref = db.collection('sales').document()
+    sale_ref.set(sale_data)
+
+    return sale_ref.id
 
 
 def generate_unique_barcode():
@@ -12,7 +66,7 @@ def generate_unique_barcode():
 
 def check_barcode_exists(barcode):
     """Check if the barcode already exists in the inventory."""
-    docs = db.collection('inventory').where('barcode', '==', barcode).stream()
+    docs = db.collection('inventory').where(field_path='barcode', op_string='==', value=barcode).stream()
     return any(docs)  # Returns True if any documents exist with the same barcode
 
 
