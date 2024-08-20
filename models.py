@@ -1,10 +1,12 @@
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import create_access_token
 from datetime import datetime
-
 from google.cloud import firestore
 import random
 import string
 
 db = firestore.Client()
+bcrypt = Bcrypt()
 
 
 def update_inventory_item_quantity(item_id, quantity_sold):
@@ -104,3 +106,35 @@ def delete_inventory_item(item_id):
     doc_ref = db.collection('inventory').document(item_id)
     doc_ref.delete()
     return True
+
+
+def create_user(username, password):
+    """Create a new user with a hashed password."""
+    users_ref = db.collection('users')
+    if users_ref.where('username', '==', username).get():
+        raise ValueError("Username already exists")
+
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    user_data = {
+        'username': username,
+        'password': hashed_password,
+        'role': 'admin'  # Default role can be set to 'admin'
+    }
+    users_ref.document().set(user_data)
+
+
+def authenticate_user(username, password):
+    """Authenticate a user and return a JWT token if valid."""
+    users_ref = db.collection('users')
+    user_query = users_ref.where('username', '==', username).get()
+
+    if not user_query:
+        raise ValueError("User not found")
+
+    user = user_query[0].to_dict()
+
+    if bcrypt.check_password_hash(user['password'], password):
+        access_token = create_access_token(identity={'username': username, 'role': user['role']})
+        return access_token
+    else:
+        raise ValueError("Invalid password")
